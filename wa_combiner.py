@@ -727,18 +727,17 @@ if __name__ == "__main__":
     output_filename = os.path.join(output_dir, "combined_world_anvil_data.json")
     output_pdf_filename = os.path.join(output_dir, "world_anvil_summary.pdf")
 
-    json_files_to_combine = []
-
-    def extend_with_dir(dir_path):
-        """Append JSON files from the given directory to the list if it exists."""
+    def collect_json_files(dir_path):
+        """Return a list of .json file paths from dir_path, or empty list if missing."""
         if not os.path.isdir(dir_path):
-            return
-        for f in os.listdir(dir_path):
-            if f.endswith('.json'):
-                json_files_to_combine.append(os.path.join(dir_path, f))
+            return []
+        return [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.endswith('.json')]
 
-    extend_with_dir(json_articles_dir)
-    extend_with_dir(json_secrets_dir)
+    article_files = collect_json_files(json_articles_dir)
+    secret_files = collect_json_files(json_secrets_dir)
+    json_files_to_combine = article_files + secret_files
+
+    print(f"Found {len(article_files)} articles and {len(secret_files)} secrets.")
 
     if not json_files_to_combine:
         print(
@@ -746,8 +745,6 @@ if __name__ == "__main__":
             "Ensure the export contains 'articles' or 'secrets' directories with .json files."
         )
         raise SystemExit(1)
-
-    print(f"Found {len(json_files_to_combine)} JSON files to combine.")
     combined_data = combine_json_files(json_files_to_combine, output_filename)
 
     if combined_data:
