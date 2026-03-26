@@ -1,9 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller spec file for wa_combiner
-# Build with: pyinstaller wa_combiner.spec
+# PyInstaller spec file for wa_to_pdf
+# Build with: pyinstaller wa_to_pdf.spec
 
 a = Analysis(
-    ['wa_combiner.py'],
+    ['wa_to_pdf.py'],
     pathex=[],
     binaries=[],
     datas=[('DejaVuSans.ttf', '.')],
@@ -23,7 +23,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='wa_combiner',
+    name='wa_to_pdf',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

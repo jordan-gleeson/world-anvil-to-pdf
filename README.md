@@ -17,7 +17,7 @@ This tool takes a World Anvil JSON export and combines all articles (and secrets
 
 ## Standalone Executable (no Python required)
 
-Download the latest `wa_combiner.exe` from the [Releases](https://github.com/jordan-gleeson/world-anvil-to-pdf/releases) page. Place it in a folder, create an `input/` subfolder, drop your World Anvil export ZIP inside, and double-click the exe (or run it from a terminal).
+Download the latest `wa_to_pdf.exe` from the [Releases](https://github.com/jordan-gleeson/world-anvil-to-pdf/releases) page. Place it in a folder, create an `input/` subfolder, drop your World Anvil export ZIP inside, and double-click the exe (or run it from a terminal).
 
 ## Requirements (Python)
 
@@ -38,7 +38,7 @@ pip install -r requirements.txt
 3. Run the script:
 
 ```bash
-python wa_combiner.py
+python wa_to_pdf.py
 ```
 
 The script will automatically find the export ZIP with the most recent date in its filename, extract it, and generate a PDF in the `output/` folder.
@@ -48,7 +48,7 @@ You can also place an already-extracted export folder in `input/` instead of a Z
 ### Options
 
 ```bash
-python wa_combiner.py --help
+python wa_to_pdf.py --help
 ```
 
 | Flag | Description | Default |
@@ -63,20 +63,20 @@ python wa_combiner.py --help
 
 ```bash
 # Use custom input and output directories
-python wa_combiner.py --input ./my_exports --output ./pdfs
+python wa_to_pdf.py --input ./my_exports --output ./pdfs
 
 # Use a different font
-python wa_combiner.py --font /path/to/MyFont.ttf
+python wa_to_pdf.py --font /path/to/MyFont.ttf
 
 # Exclude secrets from the PDF
-python wa_combiner.py --no-secrets
+python wa_to_pdf.py --no-secrets
 ```
 
 ## Folder Structure
 
 ```
 world-anvil-to-pdf/
-  wa_combiner.py
+  wa_to_pdf.py
   DejaVuSans.ttf
   requirements.txt
   input/              <-- place your export ZIP here
@@ -117,16 +117,16 @@ To build the standalone `.exe` yourself:
 
 ```bash
 pip install pyinstaller
-pyinstaller wa_combiner.spec
+pyinstaller wa_to_pdf.spec
 ```
 
-The executable will be created at `dist/wa_combiner.exe` with the font bundled inside.
+The executable will be created at `dist/wa_to_pdf.exe` with the font bundled inside.
 
 ## Running Tests
 
 ```bash
 pip install pytest
-pytest test_wa_combiner.py -v
+pytest test_wa_to_pdf.py -v
 ```
 
 ## License

@@ -705,10 +705,10 @@ def main(argv=None):
         description="Convert World Anvil exports into a readable PDF document.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="Examples:\n"
-               "  python wa_combiner.py\n"
-               "  python wa_combiner.py --input ./my_exports --output ./pdfs\n"
-               "  python wa_combiner.py --font /path/to/MyFont.ttf\n"
-               "  python wa_combiner.py --no-secrets",
+               "  python wa_to_pdf.py\n"
+               "  python wa_to_pdf.py --input ./my_exports --output ./pdfs\n"
+               "  python wa_to_pdf.py --font /path/to/MyFont.ttf\n"
+               "  python wa_to_pdf.py --no-secrets",
     )
     parser.add_argument(
         "-i", "--input", dest="input_dir",

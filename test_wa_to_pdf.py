@@ -1,10 +1,10 @@
-"""Tests for wa_combiner.py"""
+"""Tests for wa_to_pdf.py"""
 
 import json
 import os
 import pytest
 
-from wa_combiner import (
+from wa_to_pdf import (
     parse_wa_table,
     clean_world_anvil_text,
     extract_article_sections,
