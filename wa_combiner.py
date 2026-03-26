@@ -709,6 +709,8 @@ if __name__ == "__main__":
     input_dir = os.path.join(script_dir, "input")
     output_dir = os.path.join(script_dir, "output")
 
+    cache_dir = os.path.join(script_dir, "cache")
+
     os.makedirs(input_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 
@@ -722,7 +724,11 @@ if __name__ == "__main__":
     json_articles_dir = os.path.join(world_anvil_root_dir, "articles")
     json_secrets_dir = os.path.join(world_anvil_root_dir, "secrets")
     images_json_dir = os.path.join(world_anvil_root_dir, "images")
-    downloaded_images_dir = os.path.join(world_anvil_root_dir, "downloaded_images")
+
+    # Cache downloaded images per world so re-runs don't re-download
+    world_name = os.path.basename(world_anvil_root_dir)
+    downloaded_images_dir = os.path.join(cache_dir, world_name)
+    os.makedirs(downloaded_images_dir, exist_ok=True)
 
     output_filename = os.path.join(output_dir, "combined_world_anvil_data.json")
     output_pdf_filename = os.path.join(output_dir, "world_anvil_summary.pdf")
@@ -749,3 +755,7 @@ if __name__ == "__main__":
 
     if combined_data:
         create_pdf_summary(combined_data, output_pdf_filename, images_json_dir, downloaded_images_dir)
+
+    # Clean up intermediate file
+    if os.path.exists(output_filename):
+        os.remove(output_filename)

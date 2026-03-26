@@ -49,7 +49,8 @@ world-anvil-to-pdf/
   DejaVuSans.ttf
   requirements.txt
   input/              <-- place your export ZIP here
-  output/             <-- PDF and combined JSON appear here
+  output/             <-- generated PDF appears here
+  cache/              <-- downloaded images cached per world
 ```
 
 ## How World Anvil Exports Work

@@ -14,11 +14,13 @@ env/
 # fpdf font caches
 *.pkl
 
-# Input/output contents (keep the folders via .gitkeep)
+# Input/output/cache contents (keep the folders via .gitkeep)
 input/*
 !input/.gitkeep
 output/*
 !output/.gitkeep
+cache/*
+!cache/.gitkeep
 
 # IDE
 .vscode/
