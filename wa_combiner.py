@@ -1,5 +1,6 @@
 import json
 import os
+import zipfile
 from fpdf import FPDF
 from html import unescape
 import re
@@ -611,76 +612,144 @@ def combine_json_files(file_paths, output_filename="combined_world_anvil_data.js
         print(f"Error writing combined data to {output_filename}: {e}")
         return None
 
-# --- How to use this script ---
-# 1. Place this Python script in the directory containing your World Anvil JSON files.
-# 2. If your JSON files are in a different directory, change the 'json_directory' variable below.
-# 3. Run the script. It will find all .json files in the specified directory,
-#    combine them, and create a new file named 'combined_world_anvil_data.json'.
+def find_world_root(extract_dir):
+    """Find the inner world directory containing 'articles/' within an extracted export.
+
+    World Anvil exports have the structure:
+        World-Name-YYYY-MM-DD/
+            World-Name-xxx/
+                articles/
+                secrets/
+                images/
+                ...
+
+    This function walks down to find the directory that directly contains 'articles/'.
+    """
+    # Check if extract_dir itself contains articles/
+    if os.path.isdir(os.path.join(extract_dir, "articles")):
+        return extract_dir
+
+    # Otherwise look one or two levels deep
+    for root, dirs, _files in os.walk(extract_dir):
+        if "articles" in dirs:
+            return root
+
+    return None
+
+
+def find_latest_export(input_dir):
+    """Find and extract the most recent World Anvil export ZIP in input_dir.
+
+    Looks for ZIP files whose names contain a YYYY-MM-DD date and selects the
+    most recent one. The ZIP is extracted into input_dir if not already extracted.
+
+    Returns the path to the inner world root directory, or None.
+    """
+    if not os.path.isdir(input_dir):
+        print(f"Error: Input directory '{input_dir}' does not exist.")
+        return None
+
+    date_pattern = re.compile(r'(\d{4}-\d{2}-\d{2})')
+
+    # Collect ZIPs with parseable dates
+    zip_candidates = []
+    for f in os.listdir(input_dir):
+        if not f.lower().endswith('.zip'):
+            continue
+        m = date_pattern.search(f)
+        if m:
+            zip_candidates.append((m.group(1), f))
+
+    # Also consider already-extracted directories
+    dir_candidates = []
+    for d in os.listdir(input_dir):
+        full = os.path.join(input_dir, d)
+        if not os.path.isdir(full):
+            continue
+        m = date_pattern.search(d)
+        if m:
+            dir_candidates.append((m.group(1), full))
+
+    if not zip_candidates and not dir_candidates:
+        print(f"No World Anvil export ZIPs or folders found in '{input_dir}'.")
+        print("Place a World Anvil export ZIP (e.g. World-MyWorld-2025-01-15.zip) in the input/ folder.")
+        return None
+
+    # Pick the newest ZIP and extract if needed
+    if zip_candidates:
+        zip_candidates.sort(key=lambda x: x[0], reverse=True)
+        best_date, best_zip = zip_candidates[0]
+        zip_path = os.path.join(input_dir, best_zip)
+        extract_name = os.path.splitext(best_zip)[0]
+        extract_path = os.path.join(input_dir, extract_name)
+
+        if not os.path.isdir(extract_path):
+            print(f"Extracting {best_zip}...")
+            with zipfile.ZipFile(zip_path, 'r') as zf:
+                zf.extractall(extract_path)
+            print(f"Extracted to {extract_path}")
+
+        world_root = find_world_root(extract_path)
+        if world_root:
+            return world_root
+
+    # Fall back to already-extracted directories
+    if dir_candidates:
+        dir_candidates.sort(key=lambda x: x[0], reverse=True)
+        for _date, dir_path in dir_candidates:
+            world_root = find_world_root(dir_path)
+            if world_root:
+                return world_root
+
+    print("Could not locate articles/ directory within the export. Check the export structure.")
+    return None
+
 
 if __name__ == "__main__":
-    # Set the default path to your World Anvil export directory.
-    # Automatically find the latest World Anvil export directory by datestamp
-    parent_dir = os.getcwd()
-    candidates = [
-        d for d in os.listdir(parent_dir)
-        if os.path.isdir(os.path.join(parent_dir, d)) and re.match(r"World-Bel'delon-\d{4}-\d{2}-\d{2}", d)
-    ]
-    if candidates:
-        # Sort by date descending
-        candidates.sort(key=lambda d: re.search(r"(\d{4})-(\d{2})-(\d{2})", d).group(0), reverse=True)
-        print(candidates)
-        default_path = os.path.join(parent_dir, candidates[0], "World-Beldelon-7bb")
-    else:
-        default_path = "./World-Bel'delon-YYYY-MM-DD"
-    
-    # Ask the user for the path, using the default if none is provided.
-    # user_input = input(f"Enter the path to your World Anvil export directory (press Enter for default:\n{default_path}): ").strip()
-    
-    world_anvil_root_dir = default_path
-    
-    print("World anvil root directory set to:", world_anvil_root_dir)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    input_dir = os.path.join(script_dir, "input")
+    output_dir = os.path.join(script_dir, "output")
 
-    if not os.path.isdir(world_anvil_root_dir):
-        print(f"Error: The directory '{world_anvil_root_dir}' does not exist or is not a directory.")
-    else:
-        # The JSON files are expected to be in the 'articles' subdirectory.
-        json_articles_dir = os.path.join(world_anvil_root_dir, "articles")
-        json_secrets_dir = os.path.join(world_anvil_root_dir, "secrets")
-        images_json_dir = os.path.join(world_anvil_root_dir, "images")
-        downloaded_images_dir = os.path.join(world_anvil_root_dir, "downloaded_images")
-        
-        # The output files will be saved in the root directory.
-        output_filename = os.path.join(world_anvil_root_dir, "combined_world_anvil_data.json")
-        output_pdf_filename = os.path.join(world_anvil_root_dir, "world_anvil_summary.pdf")
+    os.makedirs(input_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
-        try:
-            # Find all files in the 'articles' directory that end with .json
-            json_files_to_combine = []
+    world_anvil_root_dir = find_latest_export(input_dir)
 
-            def extend_with_dir(dir_path):
-                """Append JSON files from the given directory to the list if it exists."""
-                if not os.path.isdir(dir_path):
-                    return
-                for f in os.listdir(dir_path):
-                    if f.endswith('.json'):
-                        json_files_to_combine.append(os.path.join(dir_path, f))
+    if not world_anvil_root_dir:
+        raise SystemExit(1)
 
-            extend_with_dir(json_articles_dir)
-            extend_with_dir(json_secrets_dir)
+    print(f"Using export: {world_anvil_root_dir}")
 
-            if not json_files_to_combine:
-                print(
-                    f"No JSON files to combine were found under '{world_anvil_root_dir}'. "
-                    "Ensure the 'articles' or 'secrets' directories contain .json files."
-                )
-            else:
-                print(f"Found {len(json_files_to_combine)} JSON files to combine.")
-                combined_data = combine_json_files(json_files_to_combine, output_filename)
+    json_articles_dir = os.path.join(world_anvil_root_dir, "articles")
+    json_secrets_dir = os.path.join(world_anvil_root_dir, "secrets")
+    images_json_dir = os.path.join(world_anvil_root_dir, "images")
+    downloaded_images_dir = os.path.join(world_anvil_root_dir, "downloaded_images")
 
-                if combined_data:
-                    create_pdf_summary(combined_data, output_pdf_filename, images_json_dir, downloaded_images_dir)
+    output_filename = os.path.join(output_dir, "combined_world_anvil_data.json")
+    output_pdf_filename = os.path.join(output_dir, "world_anvil_summary.pdf")
 
-        except FileNotFoundError:
-            print(f"Error: The directory '{os.path.abspath(json_articles_dir)}' was not found.")
-        except Exception as e:
-            print(f"An unexpected error occurred: {e}")
+    json_files_to_combine = []
+
+    def extend_with_dir(dir_path):
+        """Append JSON files from the given directory to the list if it exists."""
+        if not os.path.isdir(dir_path):
+            return
+        for f in os.listdir(dir_path):
+            if f.endswith('.json'):
+                json_files_to_combine.append(os.path.join(dir_path, f))
+
+    extend_with_dir(json_articles_dir)
+    extend_with_dir(json_secrets_dir)
+
+    if not json_files_to_combine:
+        print(
+            f"No JSON files found under '{world_anvil_root_dir}'. "
+            "Ensure the export contains 'articles' or 'secrets' directories with .json files."
+        )
+        raise SystemExit(1)
+
+    print(f"Found {len(json_files_to_combine)} JSON files to combine.")
+    combined_data = combine_json_files(json_files_to_combine, output_filename)
+
+    if combined_data:
+        create_pdf_summary(combined_data, output_pdf_filename, images_json_dir, downloaded_images_dir)

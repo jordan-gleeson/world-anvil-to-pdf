@@ -14,15 +14,11 @@ env/
 # fpdf font caches
 *.pkl
 
-# Downloaded images
-downloaded_images/
-
-# Generated output
-*.pdf
-combined_world_anvil_data.json
-
-# World Anvil export data (user-specific)
-World-*/
+# Input/output contents (keep the folders via .gitkeep)
+input/*
+!input/.gitkeep
+output/*
+!output/.gitkeep
 
 # IDE
 .vscode/
