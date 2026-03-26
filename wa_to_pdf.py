@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import sys
@@ -732,7 +733,12 @@ def main(argv=None):
     )
     args = parser.parse_args(argv)
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # When running as a PyInstaller bundle, use the exe's directory (not the temp extraction dir)
+    if getattr(sys, '_MEIPASS', None):
+        script_dir = os.path.dirname(sys.executable)
+        atexit.register(lambda: input("Press Enter to exit..."))
+    else:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
     input_dir = args.input_dir if args.input_dir else os.path.join(script_dir, "input")
     output_dir = args.output_dir if args.output_dir else os.path.join(script_dir, "output")
     cache_dir = args.cache_dir if args.cache_dir else os.path.join(script_dir, "cache")
