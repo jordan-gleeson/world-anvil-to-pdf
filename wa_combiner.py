@@ -456,6 +456,8 @@ def create_pdf_summary(json_data: list, output_filename: str = "world_anvil_summ
     # Resolve font path
     font_filename = "DejaVuSans.ttf"
     script_dir = os.path.dirname(os.path.abspath(__file__))
+    # When running as a PyInstaller bundle, bundled data files are in sys._MEIPASS
+    bundle_dir = getattr(sys, '_MEIPASS', None)
     resolved_font = None
 
     if font_path:
@@ -465,10 +467,13 @@ def create_pdf_summary(json_data: list, output_filename: str = "world_anvil_summ
             print(f"Error: Specified font file '{font_path}' not found.")
             return
     else:
-        for candidate in [
+        candidates = [
             os.path.join(script_dir, font_filename),
             os.path.join(os.getcwd(), font_filename),
-        ]:
+        ]
+        if bundle_dir:
+            candidates.insert(0, os.path.join(bundle_dir, font_filename))
+        for candidate in candidates:
             if os.path.exists(candidate):
                 resolved_font = os.path.abspath(candidate)
                 break

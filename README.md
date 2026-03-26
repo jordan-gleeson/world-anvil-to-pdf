@@ -15,7 +15,11 @@ This tool takes a World Anvil JSON export and combines all articles (and secrets
 - Extracts additional article sections (demographics, history, geography, etc.)
 - Cleans up World Anvil-specific tags, UUIDs, and cross-references
 
-## Requirements
+## Standalone Executable (no Python required)
+
+Download the latest `wa_combiner.exe` from the [Releases](https://github.com/jordan-gleeson/world-anvil-to-pdf/releases) page. Place it in a folder, create an `input/` subfolder, drop your World Anvil export ZIP inside, and double-click the exe (or run it from a terminal).
+
+## Requirements (Python)
 
 - Python 3.8+
 
@@ -106,6 +110,17 @@ The script locates the `articles/` and `secrets/` directories within the export,
 - **"Font file not found"** — Ensure `DejaVuSans.ttf` is in the same directory as the script, or use `--font` to provide a path to any `.ttf` font file.
 - **"No JSON files found"** — The export may be empty or have an unexpected structure. Check that the ZIP contains `articles/` with `.json` files inside.
 - **Images not appearing** — Images are downloaded from World Anvil's servers. Check your internet connection and that the export contains an `images/` directory.
+
+## Building the Executable
+
+To build the standalone `.exe` yourself:
+
+```bash
+pip install pyinstaller
+pyinstaller wa_combiner.spec
+```
+
+The executable will be created at `dist/wa_combiner.exe` with the font bundled inside.
 
 ## Running Tests
 
