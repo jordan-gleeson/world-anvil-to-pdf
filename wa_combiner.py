@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 import json
 import os
+import shutil
+import tempfile
 import zipfile
 from fpdf import FPDF
 from html import unescape
@@ -95,12 +99,9 @@ def render_table(pdf, rows, is_header):
 
         # Calculate the height needed for each cell in this row
         cell_heights = []
-        cell_lines = []
         for cell in row:
             cell = clean_world_anvil_text(cell)
-            # Use get_lines replacement for dry_run
             lines = get_lines(pdf, col_width, cell)
-            cell_lines.append(lines)
             cell_heights.append(6 * len(lines) if lines else 6)
         max_height = max(cell_heights) if cell_heights else 6
 
@@ -337,7 +338,7 @@ def write_heading(pdf: FPDF, level: int, text: str):
     pdf.multi_cell(0, 7, text.strip(), align='L')
     pdf.ln(1)
 
-def process_content_stream(pdf: FPDF, text: str, images_json_dir: str = None, downloaded_images_dir: str = None):
+def process_content_stream(pdf: FPDF, text: str, images_json_dir: str | None = None, downloaded_images_dir: str | None = None):
     """Process WA content text: render headings [h1-h6], tables, images, and paragraphs with cleaning."""
     if not text or not text.strip():
         return
@@ -445,7 +446,7 @@ def add_scaled_image(pdf, image_path, max_page_height_ratio=0.5):
         print(f"Error adding image {image_path} to PDF: {e}")
 
 
-def create_pdf_summary(json_data, output_filename="world_anvil_summary.pdf", images_json_dir=None, downloaded_images_dir=None):
+def create_pdf_summary(json_data: list, output_filename: str = "world_anvil_summary.pdf", images_json_dir: str | None = None, downloaded_images_dir: str | None = None):
     """
     Creates a PDF summary from the combined World Anvil JSON data.
     Extracts and cleans title and content from each article, and adds images.
@@ -486,8 +487,6 @@ def create_pdf_summary(json_data, output_filename="world_anvil_summary.pdf", ima
     # FPDF/Python may resolve G: to the internal A: volume, which fails.
     # We copy the font to the system temp folder (C:) to avoid this.
     try:
-        import tempfile
-        import shutil
         if os.path.exists(font_path):
             temp_dir = tempfile.gettempdir()
             temp_font_path = os.path.join(temp_dir, "wa_combiner_DejaVuSans.ttf")
@@ -678,7 +677,7 @@ def find_latest_export(input_dir):
     # Pick the newest ZIP and extract if needed
     if zip_candidates:
         zip_candidates.sort(key=lambda x: x[0], reverse=True)
-        best_date, best_zip = zip_candidates[0]
+        _best_date, best_zip = zip_candidates[0]
         zip_path = os.path.join(input_dir, best_zip)
         extract_name = os.path.splitext(best_zip)[0]
         extract_path = os.path.join(input_dir, extract_name)
