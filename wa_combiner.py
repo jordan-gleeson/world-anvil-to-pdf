@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
-import shutil
-import tempfile
+import sys
 import zipfile
 from fpdf import FPDF
 from html import unescape
@@ -446,70 +446,48 @@ def add_scaled_image(pdf, image_path, max_page_height_ratio=0.5):
         print(f"Error adding image {image_path} to PDF: {e}")
 
 
-def create_pdf_summary(json_data: list, output_filename: str = "world_anvil_summary.pdf", images_json_dir: str | None = None, downloaded_images_dir: str | None = None):
+def create_pdf_summary(json_data: list, output_filename: str = "world_anvil_summary.pdf", images_json_dir: str | None = None, downloaded_images_dir: str | None = None, font_path: str | None = None):
     """
     Creates a PDF summary from the combined World Anvil JSON data.
     Extracts and cleans title and content from each article, and adds images.
     """
     pdf = FPDF()
     
-    # Locate font file robustly to handle Google Drive virtual paths (A: vs G:)
+    # Resolve font path
     font_filename = "DejaVuSans.ttf"
-    found_path = None
-    
-    # 1. Check current working directory
-    if os.path.exists(font_filename):
-        # Use simple path join to properly handle Google Drive virtual paths (avoid resolving G: -> A:)
-        found_path = os.path.join(os.getcwd(), font_filename)
-        
-    # 2. Check directory of the script if not found in CWD
-    if not found_path:
-        script_dir = os.path.dirname(__file__)
-        candidate = os.path.join(script_dir, font_filename)
-        if os.path.exists(candidate):
-            found_path = candidate
-        
-        # 3. Handle drive letter mismatch (A: internal mount -> CWD drive)
-        # If __file__ points to A: but we are running from another drive, try swapping
-        elif script_dir and script_dir[0].lower() == 'a':
-            cwd = os.getcwd()
-            if len(cwd) >= 2 and cwd[1] == ':':
-                fixed_script_dir = cwd[0] + script_dir[1:]
-                candidate = os.path.join(fixed_script_dir, font_filename)
-                if os.path.exists(candidate):
-                    found_path = candidate
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    resolved_font = None
 
-    font_path = found_path if found_path else font_filename
-    
-    print("Font path:", font_path)
-
-    # Workaround for Google Drive Mirror path issues:
-    # FPDF/Python may resolve G: to the internal A: volume, which fails.
-    # We copy the font to the system temp folder (C:) to avoid this.
-    try:
+    if font_path:
         if os.path.exists(font_path):
-            temp_dir = tempfile.gettempdir()
-            temp_font_path = os.path.join(temp_dir, "wa_combiner_DejaVuSans.ttf")
-            shutil.copy2(font_path, temp_font_path)
-            font_path = temp_font_path
-            print("Using temp font path:", font_path)
-    except Exception as e:
-        print(f"Warning: Could not copy font to temp dir, using original path. Error: {e}")
+            resolved_font = os.path.abspath(font_path)
+        else:
+            print(f"Error: Specified font file '{font_path}' not found.")
+            return
+    else:
+        for candidate in [
+            os.path.join(script_dir, font_filename),
+            os.path.join(os.getcwd(), font_filename),
+        ]:
+            if os.path.exists(candidate):
+                resolved_font = os.path.abspath(candidate)
+                break
 
-    if not os.path.exists(font_path):
-        print(f"Error: Font file '{font_filename}' not found. Please place it in the same directory as the script.")
+    if not resolved_font:
+        print(f"Error: Font file '{font_filename}' not found.")
+        print(f"  Checked: {os.path.join(script_dir, font_filename)}")
+        print(f"           {os.path.join(os.getcwd(), font_filename)}")
+        print(f"  Use --font to specify the path to a .ttf font file.")
         return
 
-    # FPDF2: 'uni' parameter deprecated; providing a TTF font enables Unicode
     try:
-        pdf.add_font('DejaVu', '', font_path, uni=True)
+        pdf.add_font('DejaVu', '', resolved_font, uni=True)
+    except TypeError:
+        # uni parameter removed in newer fpdf2 versions
+        pdf.add_font('DejaVu', '', resolved_font)
     except Exception as e:
-        print(f"Error loading font with uni=True: {e}")
-        try:
-             pdf.add_font('DejaVu', '', font_path)
-        except Exception as e2:
-             print(f"Error loading font without uni=True: {e2}")
-             return
+        print(f"Error: Could not load font '{resolved_font}': {e}")
+        return
 
     pdf.set_font('DejaVu', '', 12)
     # Ensure automatic page breaks with a reasonable bottom margin
@@ -519,16 +497,16 @@ def create_pdf_summary(json_data: list, output_filename: str = "world_anvil_summ
         # Some FPDF variants may not expose setter; safe to continue.
         pass
 
+    total_articles = len(json_data)
+    processed = 0
     for article_data in json_data:
         if not isinstance(article_data, dict):
-            print(f"Skipping an item in json_data because it's not a dictionary: {article_data}")
             continue
-        # entity_class = article_data.get("entityClass")
-        # if article_data.get("state") == "private" and entity_class != "Secret":
-        #     continue
 
         title = article_data.get("title", "No Title")
         title = clean_world_anvil_text(title)
+        processed += 1
+        print(f"  [{processed}/{total_articles}] {title}")
         sections = extract_article_sections(article_data)
         # Only include articles with at least one non-empty section
         if not sections:
@@ -588,24 +566,30 @@ def combine_json_files(file_paths, output_filename="combined_world_anvil_data.js
         output_filename (str): The name of the output file.
     """
     combined_data = []
+    errors = 0
 
     for file_path in file_paths:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 combined_data.append(data)
-            print(f"Successfully loaded {file_path}")
         except FileNotFoundError:
-            print(f"Error: File not found at {file_path}")
+            print(f"  Warning: File not found: {file_path}")
+            errors += 1
         except json.JSONDecodeError:
-            print(f"Error: Could not decode JSON from {file_path}. Please ensure it's valid JSON.")
+            print(f"  Warning: Invalid JSON in {os.path.basename(file_path)}")
+            errors += 1
         except Exception as e:
-            print(f"An unexpected error occurred while processing {file_path}: {e}")
+            print(f"  Warning: Error reading {os.path.basename(file_path)}: {e}")
+            errors += 1
 
     try:
         with open(output_filename, 'w', encoding='utf-8') as f:
             json.dump(combined_data, f, indent=4)
-        print(f"\nSuccessfully combined {len(combined_data)} files into {output_filename}")
+        msg = f"Loaded {len(combined_data)} files."
+        if errors:
+            msg += f" ({errors} skipped due to errors)"
+        print(msg)
         return combined_data
     except Exception as e:
         print(f"Error writing combined data to {output_filename}: {e}")
@@ -704,12 +688,49 @@ def find_latest_export(input_dir):
     return None
 
 
-if __name__ == "__main__":
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    input_dir = os.path.join(script_dir, "input")
-    output_dir = os.path.join(script_dir, "output")
+def collect_json_files(dir_path):
+    """Return a list of .json file paths from dir_path, or empty list if missing."""
+    if not os.path.isdir(dir_path):
+        return []
+    return [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.endswith('.json')]
 
-    cache_dir = os.path.join(script_dir, "cache")
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Convert World Anvil exports into a readable PDF document.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="Examples:\n"
+               "  python wa_combiner.py\n"
+               "  python wa_combiner.py --input ./my_exports --output ./pdfs\n"
+               "  python wa_combiner.py --font /path/to/MyFont.ttf\n"
+               "  python wa_combiner.py --no-secrets",
+    )
+    parser.add_argument(
+        "-i", "--input", dest="input_dir",
+        help="Input directory containing export ZIPs or folders (default: input/ next to script)",
+    )
+    parser.add_argument(
+        "-o", "--output", dest="output_dir",
+        help="Output directory for generated PDF (default: output/ next to script)",
+    )
+    parser.add_argument(
+        "-c", "--cache", dest="cache_dir",
+        help="Cache directory for downloaded images (default: cache/ next to script)",
+    )
+    parser.add_argument(
+        "-f", "--font", dest="font_path",
+        help="Path to a .ttf font file (default: DejaVuSans.ttf next to script)",
+    )
+    parser.add_argument(
+        "--no-secrets", action="store_true",
+        help="Exclude secret articles from the PDF",
+    )
+    args = parser.parse_args(argv)
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    input_dir = args.input_dir if args.input_dir else os.path.join(script_dir, "input")
+    output_dir = args.output_dir if args.output_dir else os.path.join(script_dir, "output")
+    cache_dir = args.cache_dir if args.cache_dir else os.path.join(script_dir, "cache")
 
     os.makedirs(input_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
@@ -717,7 +738,7 @@ if __name__ == "__main__":
     world_anvil_root_dir = find_latest_export(input_dir)
 
     if not world_anvil_root_dir:
-        raise SystemExit(1)
+        sys.exit(1)
 
     print(f"Using export: {world_anvil_root_dir}")
 
@@ -733,29 +754,30 @@ if __name__ == "__main__":
     output_filename = os.path.join(output_dir, "combined_world_anvil_data.json")
     output_pdf_filename = os.path.join(output_dir, "world_anvil_summary.pdf")
 
-    def collect_json_files(dir_path):
-        """Return a list of .json file paths from dir_path, or empty list if missing."""
-        if not os.path.isdir(dir_path):
-            return []
-        return [os.path.join(dir_path, f) for f in os.listdir(dir_path) if f.endswith('.json')]
-
     article_files = collect_json_files(json_articles_dir)
-    secret_files = collect_json_files(json_secrets_dir)
+    secret_files = [] if args.no_secrets else collect_json_files(json_secrets_dir)
     json_files_to_combine = article_files + secret_files
 
     print(f"Found {len(article_files)} articles and {len(secret_files)} secrets.")
 
     if not json_files_to_combine:
-        print(
-            f"No JSON files found under '{world_anvil_root_dir}'. "
+        sys.exit(
+            f"Error: No JSON files found under '{world_anvil_root_dir}'.\n"
             "Ensure the export contains 'articles' or 'secrets' directories with .json files."
         )
-        raise SystemExit(1)
+
     combined_data = combine_json_files(json_files_to_combine, output_filename)
 
     if combined_data:
-        create_pdf_summary(combined_data, output_pdf_filename, images_json_dir, downloaded_images_dir)
+        create_pdf_summary(
+            combined_data, output_pdf_filename, images_json_dir,
+            downloaded_images_dir, font_path=args.font_path,
+        )
 
     # Clean up intermediate file
     if os.path.exists(output_filename):
         os.remove(output_filename)
+
+
+if __name__ == "__main__":
+    main()

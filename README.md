@@ -29,7 +29,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-1. Export your world from World Anvil (Settings > Export)
+1. Export your world from World Anvil (https://www.worldanvil.com/learn/world/export)
 2. Place the export ZIP file in the `input/` folder
 3. Run the script:
 
@@ -40,6 +40,33 @@ python wa_combiner.py
 The script will automatically find the export ZIP with the most recent date in its filename, extract it, and generate a PDF in the `output/` folder.
 
 You can also place an already-extracted export folder in `input/` instead of a ZIP.
+
+### Options
+
+```bash
+python wa_combiner.py --help
+```
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-i`, `--input` | Input directory containing export ZIPs or folders | `input/` folder |
+| `-o`, `--output` | Output directory for generated PDF | `output/` folder |
+| `-c`, `--cache` | Cache directory for downloaded images | `cache/` folder |
+| `-f`, `--font` | Path to a `.ttf` font file | `DejaVuSans.ttf` |
+| `--no-secrets` | Exclude secret articles from the PDF | Include secrets |
+
+### Examples
+
+```bash
+# Use custom input and output directories
+python wa_combiner.py --input ./my_exports --output ./pdfs
+
+# Use a different font
+python wa_combiner.py --font /path/to/MyFont.ttf
+
+# Exclude secrets from the PDF
+python wa_combiner.py --no-secrets
+```
 
 ## Folder Structure
 
@@ -72,6 +99,20 @@ World-YourWorld-YYYY-MM-DD/
 ```
 
 The script locates the `articles/` and `secrets/` directories within the export, downloads any referenced images, and produces a combined PDF.
+
+## Troubleshooting
+
+- **"No World Anvil export ZIPs or folders found"** — Place the export ZIP in the `input/` folder, or use `--input` to point to a different directory.
+- **"Font file not found"** — Ensure `DejaVuSans.ttf` is in the same directory as the script, or use `--font` to provide a path to any `.ttf` font file.
+- **"No JSON files found"** — The export may be empty or have an unexpected structure. Check that the ZIP contains `articles/` with `.json` files inside.
+- **Images not appearing** — Images are downloaded from World Anvil's servers. Check your internet connection and that the export contains an `images/` directory.
+
+## Running Tests
+
+```bash
+pip install pytest
+pytest test_wa_combiner.py -v
+```
 
 ## License
 
