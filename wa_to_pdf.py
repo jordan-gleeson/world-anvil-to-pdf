@@ -177,6 +177,12 @@ def download_image(image_info, images_json_dir, downloaded_images_dir):
         image_url = image_info['url']
     elif 'id' in image_info:
         image_id = image_info['id']
+        # Newer World Anvil exports (2026-06 onward) no longer include the 'images'
+        # folder that mapped image IDs to their CDN URLs, so ID-based lookups can no
+        # longer be resolved locally. Skip gracefully instead of crashing on os.listdir.
+        if not images_json_dir or not os.path.isdir(images_json_dir):
+            print(f"Warning: No 'images' directory in export; cannot resolve image ID {image_id} (inline image skipped).")
+            return None
         image_json_files = [f for f in os.listdir(images_json_dir) if f.endswith(f"-{image_id}.json")]
         if not image_json_files:
             print(f"Warning: No JSON file found for image ID {image_id}")
@@ -244,9 +250,11 @@ def clean_world_anvil_text(text):
     uuid_pattern = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
     cleaned_text = re.sub(uuid_pattern, '', cleaned_text)
 
-    # NOTE: We do NOT remove image tags here, as they are used for splitting the content.
-    # image_tag_pattern = r'\[img:[0-9]+(?:\|[^\]]+)*\]'
-    # cleaned_text = re.sub(image_tag_pattern, '', cleaned_text)
+    # Fallback strip for image tags such as [img:123|none|166] and [imgblock:123|default].
+    # process_content_stream tokenizes these for rendering before cleaning, so this only
+    # affects stray tags in other contexts (e.g. table cells) and stops them leaking as
+    # literal text. The colon means the generic BBCode pattern below won't catch them.
+    cleaned_text = re.sub(r'\[img(?:block)?:[^\]]*\]', '', cleaned_text)
 
     # Pattern for BBCode-style tags like [p], [/p], [b], [/b], and [h2|...], [url:...]
     bbcode_pattern = r'\[/?\w+(?:\|[^\]]*)?\]|\[url:[^\]]+\]'
@@ -352,7 +360,8 @@ def process_content_stream(pdf: FPDF, text: str, images_json_dir: str | None = N
     # Combined regex to iterate tokens
     pattern = re.compile(
         r'(?P<table>\[table\][\s\S]*?\[/table\])'
-        r'|(?P<img>\[img:[0-9]+(?:\|[^\]]+)*\])'
+        # [img:ID|...] and the newer self-contained [imgblock:ID|style] both reference an image by ID
+        r'|(?P<img>\[img(?:block)?:[0-9]+(?:\|[^\]]+)*\])'
         r'|(?P<heading>\[(?P<h_tag>h[1-6])(?:\|[^\]]*)?\](?P<h_text>[\s\S]*?)\[/(?P=h_tag)\])',
         flags=re.IGNORECASE | re.DOTALL
     )
@@ -371,13 +380,22 @@ def process_content_stream(pdf: FPDF, text: str, images_json_dir: str | None = N
             rows, is_header = parse_wa_table(m.group('table'))
             render_table(pdf, rows, is_header)
         elif m.group('img'):
+            image_rendered = False
             if images_json_dir and downloaded_images_dir:
-                image_id_match = re.search(r'\[img:([0-9]+)', m.group('img'))
+                image_id_match = re.search(r'\[img(?:block)?:([0-9]+)', m.group('img'))
                 if image_id_match:
                     image_id = image_id_match.group(1)
                     local_image_path = download_image({'id': image_id}, images_json_dir, downloaded_images_dir)
                     if local_image_path:
                         add_scaled_image(pdf, local_image_path, max_page_height_ratio=0.5)
+                        image_rendered = True
+            if not image_rendered:
+                # The image couldn't be resolved (newer exports omit the images/ folder
+                # that mapped image IDs to URLs). add_scaled_image normally returns the
+                # cursor to the left margin; multi_cell otherwise leaves it at the right
+                # margin, so the following paragraph would render with zero width and
+                # raise "Not enough horizontal space to render a single character".
+                pdf.set_x(pdf.l_margin)
         elif m.group('heading'):
             tag = m.group('h_tag')  # h1..h6
             heading_text = m.group('h_text') or ''

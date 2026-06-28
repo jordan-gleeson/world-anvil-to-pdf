@@ -12,6 +12,8 @@ from wa_to_pdf import (
     find_world_root,
     collect_json_files,
     combine_json_files,
+    download_image,
+    process_content_stream,
 )
 
 
@@ -85,6 +87,15 @@ class TestCleanWorldAnvilText:
     def test_url_tags_stripped(self):
         text = "[url:https://example.com]Click here"
         assert clean_world_anvil_text(text) == "Click here"
+
+    def test_img_tag_stripped(self):
+        text = "Before [img:6794024|none|166] after"
+        assert clean_world_anvil_text(text) == "Before after"
+
+    def test_imgblock_tag_stripped(self):
+        # Newer World Anvil exports use a self-contained [imgblock:ID|style] tag
+        text = "Before [imgblock:7793939|default] after"
+        assert clean_world_anvil_text(text) == "Before after"
 
     def test_excessive_whitespace_collapsed(self):
         text = "Hello   \t  world"
@@ -355,3 +366,107 @@ class TestCombineJsonFiles:
             data = json.load(f)
         assert isinstance(data, list)
         assert len(data) == 1
+
+
+class TestDownloadImage:
+    """ID-based lookups need the 'images' folder, which newer exports omit."""
+
+    def test_missing_images_dir_returns_none(self, tmp_path):
+        result = download_image(
+            {"id": "7793939"},
+            str(tmp_path / "images_does_not_exist"),
+            str(tmp_path / "cache"),
+        )
+        assert result is None
+
+    def test_none_images_dir_returns_none(self, tmp_path):
+        result = download_image({"id": "7793939"}, None, str(tmp_path / "cache"))
+        assert result is None
+
+    def test_id_not_found_in_existing_dir_returns_none(self, tmp_path):
+        images_dir = tmp_path / "images"
+        images_dir.mkdir()
+        result = download_image(
+            {"id": "7793939"}, str(images_dir), str(tmp_path / "cache")
+        )
+        assert result is None
+
+
+class _FakePDF:
+    """Minimal stand-in that records text written via multi_cell."""
+
+    def __init__(self):
+        self.text_chunks = []
+        self.l_margin = 10
+
+    def set_font(self, *args, **kwargs):
+        pass
+
+    def set_x(self, x):
+        pass
+
+    def multi_cell(self, w, h, txt, *args, **kwargs):
+        self.text_chunks.append(txt)
+
+
+class TestProcessContentStream:
+    """Content rendering must handle the new [imgblock] tag without leaking or crashing."""
+
+    def test_img_and_imgblock_tags_not_leaked(self, tmp_path):
+        pdf = _FakePDF()
+        content = (
+            "[p]Intro paragraph.[/p]\n"
+            "[imgblock:7793939|default]\n"
+            "[p]Tail with [img:6794024|none|166] inline.[/p]"
+        )
+        # images dir intentionally missing (mirrors newer exports)
+        process_content_stream(
+            pdf, content, str(tmp_path / "images"), str(tmp_path / "cache")
+        )
+        rendered = "\n".join(pdf.text_chunks)
+        assert "[img" not in rendered
+        assert "imgblock" not in rendered
+        assert "Intro paragraph." in rendered
+        assert "Tail with" in rendered
+
+    def test_no_images_dirs_does_not_crash(self):
+        pdf = _FakePDF()
+        process_content_stream(pdf, "[p]Hello[/p] [imgblock:123|default]", None, None)
+        rendered = "\n".join(pdf.text_chunks)
+        assert "Hello" in rendered
+        assert "imgblock" not in rendered
+
+    def test_unresolved_image_between_paragraphs_no_crash(self):
+        """Regression: [text][unrenderable img][text] must not crash on cursor width.
+
+        multi_cell leaves the cursor at the right margin. When an inline image can't be
+        resolved (newer exports drop the images/ folder), the cursor must still be reset
+        to the left margin, or the next paragraph renders with zero available width and
+        fpdf raises "Not enough horizontal space to render a single character".
+
+        Uses a real FPDF because the bug lives in cursor arithmetic a fake can't exercise.
+        """
+        from fpdf import FPDF
+
+        font = os.path.join(os.path.dirname(__file__), "DejaVuSans.ttf")
+        if not os.path.exists(font):
+            pytest.skip("DejaVuSans.ttf not available")
+
+        pdf = FPDF()
+        try:
+            pdf.add_font("DejaVu", "", font, uni=True)
+        except TypeError:
+            pdf.add_font("DejaVu", "", font)
+        pdf.set_font("DejaVu", "", 10)
+        pdf.set_auto_page_break(auto=True, margin=12)
+        pdf.add_page()
+
+        content = (
+            "[p]" + ("First paragraph words " * 12) + "[/p]\n"
+            "[img:6793208|none|200]\n"
+            "[p]" + ("Second paragraph words " * 12) + "[/p]"
+        )
+        # images dir intentionally missing so the image can't be resolved
+        process_content_stream(pdf, content, "no_such_images_dir", "no_such_cache")
+        # Reaching here without an FPDFException means the cursor was handled correctly.
+        assert pdf.page_no() >= 1
